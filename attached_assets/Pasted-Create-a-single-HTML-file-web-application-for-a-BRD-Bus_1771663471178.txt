@@ -1,0 +1,33 @@
+Create a single HTML file web application for a BRD (Business Requirements Document) Agent. No frameworks, no libraries, pure HTML CSS and JavaScript in one file.
+Design: Dark theme. Sidebar on left, main content in center, preview panel on right. Clean and professional look.
+Left Sidebar:
+
+App name "BRD Agent" at the top
+File upload zone with drag and drop. When a file is dropped or selected, read its text content and send a POST request to http://localhost:5678/webhook/ingest with body {text: fileContents, project_id: "project-001"}
+Show a list of uploaded files below the upload zone with a status badge showing "Processing" in orange or "Done" in green
+Three source toggle buttons: Email, Slack, Transcripts
+
+Center Panel:
+
+Page title "Requirements" with a count badge
+Four filter buttons: All, Functional, Non-Functional, Conflicts
+A table showing requirements fetched from Supabase. Each row has: requirement text, type badge (Functional in blue or Non-Functional in green), source, and a conflict badge in red if has_conflict is true
+To fetch requirements call GET to https://YOUR_SUPABASE_URL/rest/v1/requirements?project_id=eq.project-001 with headers: apikey YOUR_SUPABASE_ANON_KEY and Authorization: Bearer YOUR_SUPABASE_ANON_KEY
+A "Detect Conflicts" button that sends POST to http://localhost:5678/webhook/detect-conflicts with body {project_id: "project-001"} and shows a loading spinner while waiting
+A "Generate BRD" button that sends POST to http://localhost:5678/webhook/generate-brd with body {project_id: "project-001"} and shows a loading spinner while waiting
+
+Right Sidebar:
+
+Three stat boxes at the top showing: Total Requirements, Conflicts Found, Stakeholders
+A document preview area below the stats that displays the BRD markdown returned from the Generate BRD button click. Render the markdown as formatted HTML, not raw text
+A Download button that downloads the BRD as a .md file
+
+Behavior:
+
+On page load automatically fetch and display requirements from Supabase
+After ingesting a file wait 3 seconds then refresh the requirements table automatically
+After conflict detection refresh the table to show updated conflict badges
+Show a success toast notification in the bottom right corner after each action completes
+Show error messages if any request fails
+
+Replace YOUR_SUPABASE_URL and YOUR_SUPABASE_ANON_KEY with placeholder text so I know where to put my actual values.
