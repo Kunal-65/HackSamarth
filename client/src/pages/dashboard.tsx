@@ -24,7 +24,8 @@ import {
   CheckCircle2,
   RefreshCw,
   Sparkles,
-  Search
+  Search,
+  Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
