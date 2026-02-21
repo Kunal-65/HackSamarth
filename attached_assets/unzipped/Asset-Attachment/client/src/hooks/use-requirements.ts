@@ -3,10 +3,10 @@ import { useToast } from "@/hooks/use-toast";
 
 // === CONSTANTS ===
 // Replace these with your actual Supabase details or environment variables
-const SUPABASE_URL = "";
-const SUPABASE_KEY = "";
+const SUPABASE_URL = "https://YOUR_SUPABASE_URL/rest/v1";
+const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";
 const PROJECT_ID = "project-001";
-const WEBHOOK_BASE = "/api";
+const WEBHOOK_BASE = "http://localhost:5678/webhook";
 
 // === TYPES ===
 export interface Requirement {
@@ -39,10 +39,23 @@ export function useRequirements() {
   return useQuery({
     queryKey: ["requirements", PROJECT_ID],
     queryFn: async () => {
-      const res = await fetch(`/api/requirements?project_id=${PROJECT_ID}`);
+      // NOTE: In a real app, use the Supabase JS client. 
+      // Fetching via REST as requested for simplicity in this generated output.
+      const res = await fetch(`${SUPABASE_URL}/requirements?project_id=eq.${PROJECT_ID}`, {
+        headers: {
+          "apikey": SUPABASE_KEY,
+          "Authorization": `Bearer ${SUPABASE_KEY}`,
+          "Content-Type": "application/json"
+        }
+      });
 
       if (!res.ok) {
-        throw new Error("Failed to fetch requirements");
+        // If the user hasn't set up Supabase yet, return mock data so the UI looks good
+        if (SUPABASE_URL.includes("YOUR_SUPABASE_URL")) {
+          console.warn("Supabase not configured. Returning mock data.");
+          return mockRequirements;
+        }
+        throw new Error("Failed to fetch requirements from Supabase");
       }
       
       return (await res.json()) as Requirement[];

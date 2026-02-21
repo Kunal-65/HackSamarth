@@ -15,30 +15,6 @@ export const api = {
       responses: {
         200: z.array(z.custom<typeof requirements.$inferSelect>()),
       },
-    },
-    ingest: {
-      method: 'POST' as const,
-      path: '/api/ingest' as const,
-      input: z.object({ text: z.string(), project_id: z.string() }),
-      responses: {
-        200: z.object({ success: z.boolean(), message: z.string().optional() }),
-      }
-    },
-    detectConflicts: {
-      method: 'POST' as const,
-      path: '/api/detect-conflicts' as const,
-      input: z.object({ project_id: z.string() }),
-      responses: {
-        200: z.object({ conflicts_found: z.number() }),
-      }
-    },
-    generateBrd: {
-      method: 'POST' as const,
-      path: '/api/generate-brd' as const,
-      input: z.object({ project_id: z.string() }),
-      responses: {
-        200: z.object({ markdown: z.string() }),
-      }
     }
   }
 };
