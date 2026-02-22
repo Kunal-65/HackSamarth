@@ -1,2 +1,3 @@
 # HackSamarth
-A Project Regarding BRD 
+BRD Generation Agent is an AI-powered automation platform that eliminates the manual effort behind creating Business Requirements Documents. Traditional BRD creation takes 2–5 days, involves hunting through emails, Slack messages, meeting transcripts, and documents — and still results in missed requirements, undetected conflicts, and zero traceability.This platform changes that entirely.
+By connecting to a team's existing communication tools (Gmail, Slack, file uploads, and transcripts), the agent automatically extracts, structures, validates, and compiles all project requirements into a complete, professional, and editable BRD — in minutes, not days.
