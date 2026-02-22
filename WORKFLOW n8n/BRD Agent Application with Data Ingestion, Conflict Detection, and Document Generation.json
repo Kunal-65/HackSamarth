@@ -1,0 +1,677 @@
+{
+  "name": "BRD Agent Application with Data Ingestion, Conflict Detection, and Document Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingest",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "300f7808-a9d9-4db8-ada0-042b3d58dc92",
+      "name": "Ingest Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        304
+      ],
+      "webhookId": "b996977c-bca5-4ba8-aee2-db01e0dc44a8"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $input.item.json.body.text;\nconst project_id = $input.item.json.body.project_id;\n\nreturn [{ json: { text, project_id } }];"
+      },
+      "id": "34b9bb11-1591-4b1e-9c44-6d713298ffc4",
+      "name": "Extract Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=AIzaSyAda54mWyV0hvPxgRyWW2Lz3ZmqR7ftVAU",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"Extract business requirements from the following text and return ONLY a JSON array where each item has: req_text, req_type (functional or non_functional), stakeholder, source. Do not include any markdown formatting or code fences.\\n\\nText: {{ $json.text }}\"\n    }]\n  }]\n}",
+        "options": {}
+      },
+      "id": "ba7f4896-c3f9-4b76-9dc7-ee659fb9517f",
+      "name": "Call Gemini Extract Requirements",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        704,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let responseText = $input.item.json.candidates[0].content.parts[0].text;\nresponseText = responseText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\nconst requirements = JSON.parse(responseText);\nconst project_id = $('Extract Text').item.json.project_id;\nreturn requirements.map(req => ({ json: { ...req, project_id, has_conflict: false } }));"
+      },
+      "id": "3eca2b40-c966-4e04-b99b-3893745b48ee",
+      "name": "Parse Gemini Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "requirements",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "req_text",
+              "fieldValue": "={{ $json.req_text }}"
+            },
+            {
+              "fieldId": "req_type",
+              "fieldValue": "={{ $json.req_type }}"
+            },
+            {
+              "fieldId": "stakeholder",
+              "fieldValue": "={{ $json.stakeholder }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $json.source }}"
+            },
+            {
+              "fieldId": "project_id",
+              "fieldValue": "={{ $json.project_id }}"
+            },
+            {
+              "fieldId": "has_conflict",
+              "fieldValue": "={{ $json.has_conflict }}"
+            }
+          ]
+        }
+      },
+      "id": "bbef0a85-2c9c-48de-98e9-e5ab21fe6420",
+      "name": "Insert Requirements",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        304
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "WqKjk6iCej6Nlh67",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "d44e7c88-1897-4802-ad2d-238a2182bcda",
+      "name": "Count Inserted Rows",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"count\": {{ $json.length }}\n}",
+        "options": {}
+      },
+      "id": "dac8a6a8-132e-45d9-9ff2-48cb2ca258ed",
+      "name": "Return Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1600,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "detect-conflicts",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "7c9245ae-e57e-443d-a16f-e7599994c0d3",
+      "name": "Detect Conflicts Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        752
+      ],
+      "webhookId": "80c4ea01-f8d9-4b26-9e56-866980bbe39a"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "requirements",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "project_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.body.project_id }}"
+            }
+          ]
+        }
+      },
+      "id": "4c2a7dc8-e323-407d-ab4b-4bedb70ca154",
+      "name": "Fetch Requirements",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        480,
+        752
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "WqKjk6iCej6Nlh67",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const requirements = $input.all();\nconst formatted = requirements.map((req, idx) => `${idx + 1}. [ID: ${req.json.id}] ${req.json.req_text} (Type: ${req.json.req_type})`).join('\\n');\nreturn [{ json: { formatted_list: formatted, requirements: requirements.map(r => r.json) } }];"
+      },
+      "id": "8d23b101-db72-4421-ba30-b1bf0ed0a694",
+      "name": "Format Requirements List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=AIzaSyAda54mWyV0hvPxgRyWW2Lz3ZmqR7ftVAU",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"Analyze the following business requirements and find contradictions or conflicts. Return ONLY a JSON array of conflict objects with req_id_a, req_id_b, conflict_reason, severity (low, medium, high). Do not include markdown formatting.\\n\\nRequirements:\\n{{ $json.formatted_list }}\"\n    }]\n  }]\n}",
+        "options": {}
+      },
+      "id": "d70c6a6c-25b0-4f6d-b344-dae6e4416175",
+      "name": "Call Gemini Detect Conflicts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        928,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let responseText = $input.item.json.candidates[0].content.parts[0].text;\nresponseText = responseText.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\nconst conflicts = JSON.parse(responseText);\nreturn [{ json: { conflicts } }];"
+      },
+      "id": "23b3ca94-b243-46a4-9399-9df0ab38d810",
+      "name": "Parse Conflicts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "conflicts",
+        "options": {}
+      },
+      "id": "586467dd-e52e-4da3-b8d9-2333458431f3",
+      "name": "Split Conflicts",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "requirements",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.req_id_a }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "has_conflict",
+              "fieldValue": "true"
+            },
+            {
+              "fieldId": "conflict_note",
+              "fieldValue": "={{ $json.conflict_reason }}"
+            }
+          ]
+        }
+      },
+      "id": "d5d0f2f9-4f36-4479-b533-7142d936316c",
+      "name": "Update Requirement A",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        752
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "WqKjk6iCej6Nlh67",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "requirements",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.req_id_b }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "has_conflict",
+              "fieldValue": "true"
+            },
+            {
+              "fieldId": "conflict_note",
+              "fieldValue": "={{ $json.conflict_reason }}"
+            }
+          ]
+        }
+      },
+      "id": "5930b877-0ff2-41d0-9f45-4708915eec8c",
+      "name": "Update Requirement B",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1824,
+        752
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "WqKjk6iCej6Nlh67",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"message\": \"Conflict detection completed\"\n}",
+        "options": {}
+      },
+      "id": "ca32a670-3134-4e66-8fce-4113dabba9b2",
+      "name": "Return Conflict Detection Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2048,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-brd",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cbab8623-208e-438e-8330-f8ab829f859f",
+      "name": "Generate BRD Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        528
+      ],
+      "webhookId": "37ec2889-58f0-477d-923d-b57aae7b5303"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "requirements",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "project_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.body.project_id }}"
+            }
+          ]
+        }
+      },
+      "id": "bf26274e-7c00-4cb9-9a98-b1244326e78c",
+      "name": "Fetch All Requirements",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        480,
+        528
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "WqKjk6iCej6Nlh67",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const requirements = $input.all().map(r => r.json);\nconst functional = requirements.filter(r => r.req_type === 'functional' && !r.has_conflict);\nconst nonFunctional = requirements.filter(r => r.req_type === 'non_functional' && !r.has_conflict);\nconst conflicted = requirements.filter(r => r.has_conflict);\nreturn [{ json: { functional, nonFunctional, conflicted, allRequirements: requirements } }];"
+      },
+      "id": "647c32bd-a364-428b-aa21-5ea2c92de94d",
+      "name": "Separate Requirements",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=AIzaSyAda54mWyV0hvPxgRyWW2Lz3ZmqR7ftVAU",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"Generate a complete Business Requirements Document in Markdown format with the following sections: Executive Summary, Stakeholders, Functional Requirements, Non-Functional Requirements, Conflicts and Open Issues, Timeline, Assumptions, Approval.\\n\\nFunctional Requirements:\\n{{ $json.functional.map((r, i) => `${i+1}. ${r.req_text} (Stakeholder: ${r.stakeholder}, Source: ${r.source})`).join('\\n') }}\\n\\nNon-Functional Requirements:\\n{{ $json.nonFunctional.map((r, i) => `${i+1}. ${r.req_text} (Stakeholder: ${r.stakeholder}, Source: ${r.source})`).join('\\n') }}\\n\\nConflicted Requirements:\\n{{ $json.conflicted.map((r, i) => `${i+1}. ${r.req_text} - Conflict: ${r.conflict_note}`).join('\\n') }}\"\n    }]\n  }]\n}",
+        "options": {}
+      },
+      "id": "0e63d82a-a1cc-4065-a480-9198746c35d6",
+      "name": "Call Gemini Generate BRD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        928,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let brdMarkdown = $input.item.json.candidates[0].content.parts[0].text;\nbrdMarkdown = brdMarkdown.replace(/```markdown\\n?/g, '').replace(/```\\n?/g, '').trim();\nreturn [{ json: { brd: brdMarkdown } }];"
+      },
+      "id": "8212e4f4-fac9-4822-9cb6-a1f0e0bb9cdf",
+      "name": "Parse BRD Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"brd\": {{ $json.brd }}\n}",
+        "options": {}
+      },
+      "id": "39c338cb-3e15-49df-a849-c0e72613f452",
+      "name": "Return BRD Document",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1376,
+        528
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Parse Gemini Response": {
+      "main": [
+        [
+          {
+            "node": "Insert Requirements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Text": {
+      "main": [
+        [
+          {
+            "node": "Call Gemini Extract Requirements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Gemini Extract Requirements": {
+      "main": [
+        [
+          {
+            "node": "Parse Gemini Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Requirements": {
+      "main": [
+        [
+          {
+            "node": "Count Inserted Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Inserted Rows": {
+      "main": [
+        [
+          {
+            "node": "Return Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Conflicts Webhook": {
+      "main": [
+        [
+          {
+            "node": "Fetch Requirements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Requirements": {
+      "main": [
+        [
+          {
+            "node": "Format Requirements List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Requirements List": {
+      "main": [
+        [
+          {
+            "node": "Call Gemini Detect Conflicts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Gemini Detect Conflicts": {
+      "main": [
+        [
+          {
+            "node": "Parse Conflicts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Conflicts": {
+      "main": [
+        [
+          {
+            "node": "Split Conflicts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Conflicts": {
+      "main": [
+        [
+          {
+            "node": "Update Requirement A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Requirement A": {
+      "main": [
+        [
+          {
+            "node": "Update Requirement B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Requirement B": {
+      "main": [
+        [
+          {
+            "node": "Return Conflict Detection Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate BRD Webhook": {
+      "main": [
+        [
+          {
+            "node": "Fetch All Requirements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch All Requirements": {
+      "main": [
+        [
+          {
+            "node": "Separate Requirements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separate Requirements": {
+      "main": [
+        [
+          {
+            "node": "Call Gemini Generate BRD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Gemini Generate BRD": {
+      "main": [
+        [
+          {
+            "node": "Parse BRD Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse BRD Response": {
+      "main": [
+        [
+          {
+            "node": "Return BRD Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "247e19af-5f02-4aa3-ae40-cd43c8163998",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d23152efc3f252c486ffd597a508b9ad496d6b4ff37ebc0fc0a225e4548511b4"
+  },
+  "id": "gAslmnWUKtt8HyXn",
+  "tags": []
+}
