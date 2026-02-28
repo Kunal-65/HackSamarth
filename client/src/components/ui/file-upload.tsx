@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { UploadCloud, File, CheckCircle2, Loader2 } from 'lucide-react';
+import { UploadCloud, File, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -64,15 +64,17 @@ export function FileUpload({ onUpload, isUploading }: FileUploadProps) {
 
 interface FileItemProps {
   name: string;
-  status: 'processing' | 'done';
+  status: 'processing' | 'done' | 'error';
+  onClick?: () => void;
 }
 
-export function FileItem({ name, status }: FileItemProps) {
+export function FileItem({ name, status, onClick }: FileItemProps) {
   return (
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-center gap-3 rounded-lg border border-white/5 bg-white/5 p-3"
+      onClick={onClick}
+      className={`flex items-center gap-3 rounded-lg border border-white/5 bg-white/5 p-3 cursor-pointer hover:bg-white/10 transition-colors ${onClick ? 'cursor-pointer' : ''}`}
     >
       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10">
         <File className="h-4 w-4 text-muted-foreground" />
@@ -80,13 +82,15 @@ export function FileItem({ name, status }: FileItemProps) {
       <div className="flex-1 min-w-0">
         <p className="truncate text-sm font-medium text-foreground">{name}</p>
         <p className="text-xs text-muted-foreground">
-          {status === 'processing' ? 'Analyzing content...' : 'Ingestion complete'}
+          {status === 'processing' ? 'Analyzing content...' : status === 'done' ? 'Ingestion complete' : 'Ingestion failed'}
         </p>
       </div>
       {status === 'processing' ? (
         <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
-      ) : (
+      ) : status === 'done' ? (
         <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+      ) : (
+        <AlertTriangle className="h-4 w-4 text-red-500" />
       )}
     </motion.div>
   );

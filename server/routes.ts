@@ -90,9 +90,9 @@ ${nonFunctional.map((r, i) => `- **NFR-${String(i+1).padStart(2, '0')}**: ${r.te
 Generated automatically.
 `;
       
-      res.json({ markdown });
+      res.json({ brd_markdown: markdown });
     } catch (err) {
-      res.status(400).json({ markdown: "Error generating BRD" });
+      res.status(400).json({ brd_markdown: "Error generating BRD" });
     }
   });
 

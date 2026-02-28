@@ -25,23 +25,49 @@ import {
   RefreshCw,
   Sparkles,
   Search,
-  Loader2
+  Loader2,
+  File,
+  Clock,
+  ChevronRight,
+  Activity
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type FilterType = 'All' | 'Functional' | 'Non-Functional' | 'Conflicts';
 type SourceType = 'Email' | 'Slack' | 'Transcripts';
 
+interface UploadedFile {
+  name: string;
+  status: 'processing' | 'done' | 'error';
+  content?: string;
+  timestamp: Date;
+}
+
+interface ActivityLog {
+  id: number;
+  message: string;
+  type: 'info' | 'success' | 'error' | 'processing';
+  timestamp: Date;
+}
+
 export default function Dashboard() {
   const [activeFilter, setActiveFilter] = useState<FilterType>('All');
   const [activeSources, setActiveSources] = useState<SourceType[]>(['Email', 'Slack', 'Transcripts']);
-  const [uploadedFiles, setUploadedFiles] = useState<{name: string, status: 'processing' | 'done'}[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [generatedMarkdown, setGeneratedMarkdown] = useState<string>("");
+  const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
+  const [selectedFile, setSelectedFile] = useState<UploadedFile | null>(null);
+  const [activityId, setActivityId] = useState(0);
 
   const { data: requirements, isLoading: isLoadingReqs, isRefetching } = useRequirements();
   const ingestFile = useIngestFile();
   const detectConflicts = useDetectConflicts();
   const generateBRD = useGenerateBRD();
+
+  const addActivity = (message: string, type: ActivityLog['type']) => {
+    setActivityLog(prev => [{ id: activityId, message, type, timestamp: new Date() }, ...prev].slice(0, 10));
+    setActivityId(prev => prev + 1);
+  };
 
   const handleSourceToggle = (source: SourceType) => {
     setActiveSources(prev => 
@@ -52,18 +78,39 @@ export default function Dashboard() {
   };
 
   const handleFileUpload = async (text: string, filename: string) => {
-    setUploadedFiles(prev => [{ name: filename, status: 'processing' }, ...prev]);
+    const newFile: UploadedFile = { name: filename, status: 'processing', content: text, timestamp: new Date() };
+    setUploadedFiles(prev => [newFile, ...prev]);
+    setSelectedFile(newFile);
+    addActivity(`Uploading "${filename}"...`, 'processing');
     try {
       await ingestFile.mutateAsync(text);
       setUploadedFiles(prev => prev.map(f => f.name === filename ? { ...f, status: 'done' } : f));
+      addActivity(`"${filename}" ingested successfully`, 'success');
     } catch (e) {
-      setUploadedFiles(prev => prev.filter(f => f.name !== filename));
+      setUploadedFiles(prev => prev.map(f => f.name === filename ? { ...f, status: 'error' } : f));
+      addActivity(`Failed to ingest "${filename}"`, 'error');
     }
   };
 
   const handleGenerate = async () => {
-    const result = await generateBRD.mutateAsync();
-    setGeneratedMarkdown(result.markdown);
+    addActivity('Generating BRD document...', 'processing');
+    try {
+      const result = await generateBRD.mutateAsync();
+      setGeneratedMarkdown(result.brd_markdown);
+      addActivity('BRD document generated successfully', 'success');
+    } catch (e) {
+      addActivity('Failed to generate BRD', 'error');
+    }
+  };
+
+  const handleDetectConflicts = async () => {
+    addActivity('Scanning for conflicts...', 'processing');
+    try {
+      await detectConflicts.mutateAsync();
+      addActivity('Conflict detection complete', 'success');
+    } catch (e) {
+      addActivity('Failed to detect conflicts', 'error');
+    }
   };
 
   const handleDownload = () => {
@@ -86,13 +133,15 @@ export default function Dashboard() {
     // Filter by Type/Status
     if (activeFilter === 'All') return true;
     if (activeFilter === 'Conflicts') return req.has_conflict;
-    return req.type === activeFilter;
+    if (activeFilter === 'Functional') return req.type === 'functional';
+    if (activeFilter === 'Non-Functional') return req.type === 'non_functional';
+    return false;
   });
 
   const stats = {
     total: requirements?.length || 0,
     conflicts: requirements?.filter(r => r.has_conflict).length || 0,
-    stakeholders: 4 // Hardcoded as requested
+    stakeholders: requirements ? new Set(requirements.map(r => r.stakeholder).filter(Boolean)).size : 0
   };
 
   return (
@@ -123,9 +172,43 @@ export default function Dashboard() {
           <div className="space-y-2">
             <AnimatePresence>
               {uploadedFiles.map((file, i) => (
-                <FileItem key={i} name={file.name} status={file.status} />
+                <FileItem 
+                  key={i} 
+                  name={file.name} 
+                  status={file.status} 
+                  onClick={() => setSelectedFile(file)}
+                />
               ))}
             </AnimatePresence>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Activity Log</h3>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {activityLog.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No recent activity</p>
+            ) : (
+              activityLog.map((log) => (
+                <motion.div
+                  key={log.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className={`flex items-center gap-2 text-xs p-2 rounded-lg ${
+                    log.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' :
+                    log.type === 'error' ? 'bg-red-500/10 text-red-400' :
+                    log.type === 'processing' ? 'bg-amber-500/10 text-amber-400' :
+                    'bg-white/5 text-muted-foreground'
+                  }`}
+                >
+                  {log.type === 'success' && <CheckCircle2 className="h-3 w-3" />}
+                  {log.type === 'error' && <AlertTriangle className="h-3 w-3" />}
+                  {log.type === 'processing' && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {log.type === 'info' && <Activity className="h-3 w-3" />}
+                  <span className="truncate">{log.message}</span>
+                </motion.div>
+              ))
+            )}
           </div>
         </div>
 
@@ -166,7 +249,7 @@ export default function Dashboard() {
             <Button 
               variant="outline" 
               className="gap-2 border-white/10 hover:bg-white/5 hover:text-white transition-colors"
-              onClick={() => detectConflicts.mutate()}
+              onClick={handleDetectConflicts}
               disabled={detectConflicts.isPending}
             >
               {detectConflicts.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4 text-amber-500" />}
@@ -242,11 +325,11 @@ export default function Dashboard() {
                       </div>
                       <div className="col-span-2">
                         <Badge variant="outline" className={`
-                          ${req.type === 'Functional' 
+                          ${req.type === 'functional' 
                             ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
                             : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}
                         `}>
-                          {req.type}
+                          {req.type === 'functional' ? 'Functional' : req.type === 'non_functional' ? 'Non-Functional' : req.type}
                         </Badge>
                       </div>
                       <div className="col-span-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -263,6 +346,9 @@ export default function Dashboard() {
                           <span className="text-xs text-muted-foreground/50 flex items-center gap-1">
                             <CheckCircle2 className="h-3 w-3" /> Valid
                           </span>
+                        )}
+                        {req.has_conflict && req.conflict_note && (
+                          <p className="text-xs text-red-400/70 mt-1">{req.conflict_note}</p>
                         )}
                       </div>
                     </motion.div>
@@ -301,6 +387,45 @@ export default function Dashboard() {
 
         <Separator className="bg-white/10" />
 
+        {/* File Content Preview */}
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <File className="h-4 w-4 text-blue-400" />
+              File Content
+            </h3>
+          </div>
+
+          <div className="flex-1 rounded-xl bg-white/5 border border-white/5 p-4 overflow-y-auto custom-scrollbar max-h-48">
+            {selectedFile ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <File className="h-3 w-3" />
+                  <span className="font-medium">{selectedFile.name}</span>
+                  {selectedFile.status === 'processing' && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {selectedFile.status === 'done' && <CheckCircle2 className="h-3 w-3 text-emerald-500" />}
+                  {selectedFile.status === 'error' && <AlertTriangle className="h-3 w-3 text-red-500" />}
+                </div>
+                <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-black/20 p-2 rounded-lg max-h-32 overflow-y-auto">
+                  {selectedFile.content?.slice(0, 1000)}
+                  {selectedFile.content && selectedFile.content.length > 1000 && '...'}
+                  {!selectedFile.content && 'No content available'}
+                </pre>
+              </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center p-4 gap-2 opacity-50">
+                <File className="h-8 w-8 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">
+                  Select a file to preview its content
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <Separator className="bg-white/10" />
+
+        {/* BRD Document Preview */}
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold flex items-center gap-2">

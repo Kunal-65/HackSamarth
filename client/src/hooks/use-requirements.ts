@@ -1,20 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import * as api from "../api";
 
-// === CONSTANTS ===
-// Replace these with your actual Supabase details or environment variables
-const SUPABASE_URL = "";
-const SUPABASE_KEY = "";
 const PROJECT_ID = "project-001";
-const WEBHOOK_BASE = "/api";
 
-// === TYPES ===
 export interface Requirement {
   id: number;
   text: string;
   type: string;
   source: string;
   has_conflict: boolean;
+  conflict_note?: string;
+  stakeholder?: string;
   project_id: string;
   created_at?: string;
 }
@@ -29,172 +26,122 @@ export interface ConflictResponse {
 }
 
 export interface GenerateResponse {
-  markdown: string;
+  brd_markdown: string;
 }
 
-// === HOOKS ===
+function mapSupabaseRequirement(row: Record<string, unknown>): Requirement {
+  return {
+    id: row.id as number,
+    text: (row.req_text as string) || "",
+    type: (row.req_type as string) || "",
+    source: (row.source as string) || "",
+    has_conflict: (row.has_conflict as boolean) || false,
+    conflict_note: row.conflict_note as string | undefined,
+    stakeholder: row.stakeholder as string | undefined,
+    project_id: (row.project_id as string) || "",
+    created_at: row.created_at as string | undefined,
+  };
+}
 
-// Fetch Requirements from Supabase
 export function useRequirements() {
   return useQuery({
     queryKey: ["requirements", PROJECT_ID],
     queryFn: async () => {
-      const res = await fetch(`/api/requirements?project_id=${PROJECT_ID}`);
-
-      if (!res.ok) {
-        throw new Error("Failed to fetch requirements");
+      try {
+        const data = await api.fetchRequirements();
+        if (!Array.isArray(data)) {
+          return [];
+        }
+        return data.map(mapSupabaseRequirement) as Requirement[];
+      } catch (error) {
+        console.error("Failed to fetch requirements:", error);
+        throw error;
       }
-      
-      return (await res.json()) as Requirement[];
     },
-    // Refresh frequently to simulate real-time updates without WS for now
-    refetchInterval: 5000, 
+    refetchInterval: 5000,
   });
 }
 
-// Upload/Ingest File
 export function useIngestFile() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (fileText: string) => {
-      const res = await fetch(`${WEBHOOK_BASE}/ingest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          text: fileText, 
-          project_id: PROJECT_ID 
-        }),
-      });
-      
-      if (!res.ok) {
-        // Mock success if webhook is not running
-        if (WEBHOOK_BASE.includes("localhost")) {
-            console.warn("Webhook not reachable. Simulating success.");
-            await new Promise(r => setTimeout(r, 1500)); // Simulate delay
-            return { success: true };
-        }
-        throw new Error("Ingest failed");
+      try {
+        const result = await api.ingestFile(fileText);
+        return result as IngestResponse;
+      } catch (error) {
+        toast({ 
+          title: "Error", 
+          description: "n8n not reachable. Run npx n8n in your terminal", 
+          variant: "destructive" 
+        });
+        throw error;
       }
-      return (await res.json()) as IngestResponse;
     },
     onSuccess: () => {
       toast({ title: "File Ingested", description: "Processing requirements..." });
-      // Wait a bit for processing before refreshing
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["requirements", PROJECT_ID] });
       }, 3000);
     },
-    onError: (err) => {
-      toast({ 
-        title: "Ingest Failed", 
-        description: err.message || "Could not upload file.", 
-        variant: "destructive" 
-      });
+    onError: () => {
+      // Error toast already shown in mutationFn
     }
   });
 }
 
-// Detect Conflicts
 export function useDetectConflicts() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async () => {
-      const res = await fetch(`${WEBHOOK_BASE}/detect-conflicts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: PROJECT_ID }),
-      });
-
-      if (!res.ok) {
-         if (WEBHOOK_BASE.includes("localhost")) {
-            console.warn("Webhook not reachable. Simulating success.");
-            await new Promise(r => setTimeout(r, 2000));
-            return { conflicts_found: 2 };
-        }
-        throw new Error("Conflict detection failed");
+      try {
+        const result = await api.detectConflicts();
+        return result as ConflictResponse;
+      } catch (error) {
+        toast({ 
+          title: "Error", 
+          description: "n8n not reachable. Run npx n8n in your terminal", 
+          variant: "destructive" 
+        });
+        throw error;
       }
-      return (await res.json()) as ConflictResponse;
     },
     onSuccess: () => {
-      toast({ title: "Analysis Complete", description: "Conflicts have been flagged." });
+      toast({ title: "Conflicts detected", description: "Conflicts have been flagged." });
       queryClient.invalidateQueries({ queryKey: ["requirements", PROJECT_ID] });
     },
-    onError: (err) => {
-      toast({ 
-        title: "Detection Failed", 
-        description: err.message, 
-        variant: "destructive" 
-      });
+    onError: () => {
+      // Error toast already shown in mutationFn
     }
   });
 }
 
-// Generate BRD
 export function useGenerateBRD() {
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async () => {
-      const res = await fetch(`${WEBHOOK_BASE}/generate-brd`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: PROJECT_ID }),
-      });
-
-      if (!res.ok) {
-         if (WEBHOOK_BASE.includes("localhost")) {
-            console.warn("Webhook not reachable. Simulating success.");
-            await new Promise(r => setTimeout(r, 4000));
-            return { markdown: mockMarkdown };
-        }
-        throw new Error("BRD Generation failed");
+      try {
+        const result = await api.generateBRD();
+        return result as GenerateResponse;
+      } catch (error) {
+        toast({ 
+          title: "Error", 
+          description: "n8n not reachable. Run npx n8n in your terminal", 
+          variant: "destructive" 
+        });
+        throw error;
       }
-      return (await res.json()) as GenerateResponse; // Expects { markdown: string }
     },
     onSuccess: () => {
       toast({ title: "BRD Generated", description: "Document is ready for review." });
     },
-    onError: (err) => {
-      toast({ 
-        title: "Generation Failed", 
-        description: err.message, 
-        variant: "destructive" 
-      });
+    onError: () => {
+      // Error toast already shown in mutationFn
     }
   });
 }
-
-// === MOCK DATA FOR DEMO ===
-const mockRequirements: Requirement[] = [
-  { id: 1, text: "The system shall allow users to upload PDF documents.", type: "Functional", source: "Email", has_conflict: false, project_id: "project-001" },
-  { id: 2, text: "The system must respond within 200ms for all API calls.", type: "Non-Functional", source: "Slack", has_conflict: true, project_id: "project-001" },
-  { id: 3, text: "Response time should be under 500ms.", type: "Non-Functional", source: "Transcripts", has_conflict: true, project_id: "project-001" },
-  { id: 4, text: "Users must be able to export reports to CSV.", type: "Functional", source: "Email", has_conflict: false, project_id: "project-001" },
-  { id: 5, text: "Data must be encrypted at rest using AES-256.", type: "Non-Functional", source: "Slack", has_conflict: false, project_id: "project-001" },
-];
-
-const mockMarkdown = `
-# Business Requirement Document
-## Project: BRD Agent
-
-### 1. Introduction
-This document outlines the functional and non-functional requirements for the automated agent system.
-
-### 2. Scope
-The system will ingest unstructured text from various sources and convert them into structured requirements.
-
-### 3. Functional Requirements
-- **FR-01**: The system shall support PDF, DOCX, and TXT file uploads.
-- **FR-02**: Users can filter requirements by source.
-
-### 4. Non-Functional Requirements
-- **NFR-01**: System availability must be 99.9%.
-- **NFR-02**: All data must be encrypted in transit and at rest.
-
-### 5. Conclusion
-This document serves as the primary reference for the development team.
-`;
